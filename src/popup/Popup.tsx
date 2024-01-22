@@ -3,12 +3,26 @@ import './Popup.css'
 import Markdown from 'react-markdown'
 import { ProgressBar } from 'react-loader-spinner'
 
+interface ServerResponse {
+  delayTime: number
+  executionTime: number
+  id: string
+  output: {
+    input_tokens: number
+    output_tokens: number
+    text: string[]
+  }
+  status: string
+}
+
 export const Popup = () => {
+  const backend = import.meta.env.VITE_BACKEND_URL
   const [summary, setSummary] = useState<string | null>(null)
   const [currentUrl, setCurrentUrl] = useState<string | null>(null)
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      console.log('tabs', tabs)
       const currentTab = tabs[0]
       if (currentTab && currentTab.url) {
         console.log('currentTab', currentTab)
@@ -23,6 +37,33 @@ export const Popup = () => {
       console.log('result', result)
       if (result && result[currentUrl]) {
         setSummary(result[currentUrl])
+      } else {
+        console.log('fetching from backend')
+        fetch(backend, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url: currentUrl }),
+        })
+          .then((response) => response.json())
+          .then((data: ServerResponse) => {
+            console.log('Success:', data)
+            if (data.status === 'COMPLETED') {
+              chrome.storage.local.set({ [currentUrl]: data.output.text.join() }, function () {
+                console.log('key is set to ' + currentUrl)
+                const api_response = data.output.text.join()
+
+                console.log('Value is set to ' + api_response)
+                setSummary(api_response)
+                // open popup.js
+                // chrome.action?.openPopup()
+              })
+            }
+          })
+          .catch((error) => {
+            console.error('Error:', error)
+          })
       }
     })
     console.log('currentUrl', currentUrl)
